@@ -1,0 +1,114 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Template simplificado para criar EC2 com Apache para e-commerce (sem parâmetros)",
+
+  "Resources": {
+    "ApacheVPC": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.0.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [{ "Key": "Name", "Value": "ApacheVPC" }]
+      }
+    },
+
+    "ApacheSubnet": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "ApacheVPC" },
+        "CidrBlock": "10.0.1.0/24",
+        "MapPublicIpOnLaunch": true,
+        "AvailabilityZone": { "Fn::Select": [0, { "Fn::GetAZs": "" }] },
+        "Tags": [{ "Key": "Name", "Value": "ApacheSubnet" }]
+      }
+    },
+
+    "ApacheInternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [{ "Key": "Name", "Value": "ApacheIGW" }]
+      }
+    },
+
+    "AttachGateway": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": { "Ref": "ApacheVPC" },
+        "InternetGatewayId": { "Ref": "ApacheInternetGateway" }
+      }
+    },
+
+    "ApacheRouteTable": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": { "Ref": "ApacheVPC" },
+        "Tags": [{ "Key": "Name", "Value": "ApacheRouteTable" }]
+      }
+    },
+
+    "ApacheRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "AttachGateway",
+      "Properties": {
+        "RouteTableId": { "Ref": "ApacheRouteTable" },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": { "Ref": "ApacheInternetGateway" }
+      }
+    },
+
+    "ApacheSubnetRouteTableAssociation": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "ApacheSubnet" },
+        "RouteTableId": { "Ref": "ApacheRouteTable" }
+      }
+    },
+
+    "ApacheSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Permitir HTTP para servidor Apache",
+        "VpcId": { "Ref": "ApacheVPC" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "80",
+            "ToPort": "80",
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+
+    "ApacheInstance": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "InstanceType": "t3.micro",
+        "ImageId": "ami-08c40ec9ead489470",
+        "SubnetId": { "Ref": "ApacheSubnet" },
+        "SecurityGroupIds": [{ "Ref": "ApacheSecurityGroup" }],
+        "Tags": [{ "Key": "Name", "Value": "Apache-EC2" }],
+        "UserData": {
+          "Fn::Base64": {
+            "Fn::Sub": [
+              "#!/bin/bash\n yum update -y\n yum install -y httpd\n systemctl start httpd\n systemctl enable httpd\n echo \"<h1>Servidor Apache do E-commerce 🚀</h1>\" > /var/www/html/index.html",
+              {}
+            ]
+          }
+        }
+      }
+    }
+  },
+
+  "Outputs": {
+    "PublicIP": {
+      "Description": "IP público da instância Apache",
+      "Value": { "Fn::GetAtt": ["ApacheInstance", "PublicIp"] }
+    },
+    "WebURL": {
+      "Description": "URL HTTP para acessar o Apache",
+      "Value": { "Fn::Sub": "http://${ApacheInstance.PublicDnsName}" }
+    }
+  }
+}
